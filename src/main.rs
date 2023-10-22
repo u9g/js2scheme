@@ -9,7 +9,9 @@ use transform::transform;
 mod transform;
 
 fn main() {
-    let name = env::args().nth(1).unwrap_or_else(|| "test.js".to_string());
+    let name = env::args()
+        .nth(1)
+        .unwrap_or_else(|| "example.js".to_string());
     let path = Path::new(&name);
     let source_text = std::fs::read_to_string(path).unwrap_or_else(|_| panic!("{name} not found"));
     let allocator = Allocator::default();
@@ -21,5 +23,5 @@ fn main() {
         .with_trivias(ret.trivias)
         .build(program);
 
-    println!("{}", transform(semantic_ret.semantic, true));
+    println!("{}", transform(semantic_ret.semantic, false));
 }
