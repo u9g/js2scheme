@@ -3,7 +3,7 @@ function double(x) {
   return x * x;
 }
 
-// printed verbatim
+// Template strings are printed verbatim
 `(double 5) ; returns 25`;
 
 // Function names are printed verbatim.
@@ -12,6 +12,7 @@ function to_the_fourth(x) {
   return double(double(x));
 }
 
+// Function calls are translated.
 // Will returns 625.
 // transformed to: (to_the_fourth 5)
 to_the_fourth(5);
