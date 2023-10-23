@@ -8,21 +8,25 @@ use oxc_ast::{
 use oxc_semantic::Semantic;
 use oxc_syntax::operator::{BinaryOperator, LogicalOperator, UnaryOperator};
 
-fn transform_formal_params(formal_params: &FormalParameters) -> String {
+use crate::ir::{
+    Expression as IRExpression, FunctionCall, FunctionStatement, Lambda, Statement as IRStatement,
+    Statements, VariableStatement,
+};
+
+fn transform_formal_params(formal_params: &FormalParameters) -> Vec<String> {
     if formal_params.items.is_empty() {
-        String::new()
+        vec![]
     } else {
-        let params = formal_params.items.iter().filter_map(|formal_param| {
-            let BindingPatternKind::BindingIdentifier(name) = &formal_param.pattern.kind else {
-                return None;
-            };
-            Some(name.name.to_string())
-        });
-        params.collect::<Vec<String>>().join(" ")
+        let mut param_names = Vec::with_capacity(formal_params.items.len());
+        for param in &formal_params.items {
+            let BindingPatternKind::BindingIdentifier(param_identifier) = &param.pattern.kind else {unimplemented!()};
+            param_names.push(param_identifier.name.to_string());
+        }
+        param_names
     }
 }
 
-fn transform_expr(expr: &Expression) -> String {
+fn transform_expr(expr: &Expression) -> IRExpression {
     match expr {
         Expression::BinaryExpression(expr) => {
             if expr.operator.is_equality()
@@ -31,14 +35,16 @@ fn transform_expr(expr: &Expression) -> String {
                 if let Expression::BinaryExpression(binexpr) = &expr.left {
                     if let Expression::NumberLiteral(nlit) = &binexpr.right {
                         if nlit.raw == "2" {
-                            return format!("(even? {})", transform_expr(&binexpr.left));
+                            return IRExpression::FunctionCall(FunctionCall {
+                                name: "even?".to_string(),
+                                parameters: vec![transform_expr(&binexpr.left)],
+                            });
                         }
                     }
                 }
             }
-            format!(
-                "({} {} {})",
-                match expr.operator {
+            IRExpression::FunctionCall(FunctionCall {
+                name: match expr.operator {
                     BinaryOperator::Multiplication => "*",
                     BinaryOperator::Addition => "+",
                     BinaryOperator::Subtraction => "-",
@@ -50,102 +56,103 @@ fn transform_expr(expr: &Expression) -> String {
                     BinaryOperator::StrictEquality => "=",
                     BinaryOperator::StrictInequality => "!=",
                     _ => todo!(),
-                },
-                transform_expr(&expr.left),
-                transform_expr(&expr.right)
-            )
+                }
+                .to_string(),
+                parameters: vec![transform_expr(&expr.left), transform_expr(&expr.right)],
+            })
         }
-        Expression::ConditionalExpression(cond_expr) => {
-            format!(
-                "(if {} {} {})",
+        Expression::ConditionalExpression(cond_expr) => IRExpression::FunctionCall(FunctionCall {
+            name: "if".to_string(),
+            parameters: vec![
                 transform_expr(&cond_expr.test),
                 transform_expr(&cond_expr.consequent),
-                transform_expr(&cond_expr.alternate)
-            )
-        }
-        Expression::UnaryExpression(unexpr) => format!(
-            "({} {})",
-            match unexpr.operator {
+                transform_expr(&cond_expr.alternate),
+            ],
+        }),
+        Expression::UnaryExpression(unexpr) => IRExpression::FunctionCall(FunctionCall {
+            name: match unexpr.operator {
                 UnaryOperator::UnaryNegation => "-",
-                _ => todo!(),
+                _ => unimplemented!(),
+            }
+            .to_string(),
+            parameters: vec![transform_expr(&unexpr.argument)],
+        }),
+        Expression::CallExpression(call_expr) => IRExpression::FunctionCall(FunctionCall {
+            name: match &call_expr.callee {
+                Expression::Identifier(ident) => ident.name.to_string(),
+                Expression::StringLiteral(slit) => slit.value.to_string(),
+                _ => unimplemented!(),
             },
-            transform_expr(&unexpr.argument)
-        ),
-        Expression::CallExpression(call_expr) => format!(
-            "({} {})",
-            transform_expr(&call_expr.callee),
-            call_expr
+            parameters: call_expr
                 .arguments
                 .iter()
-                .map(|arg| transform_expr(match arg {
-                    Argument::Expression(expr) => expr,
-                    _ => todo!(),
-                }))
-                .collect::<Vec<String>>()
-                .join(" ")
-        ),
-        Expression::ArrayExpression(array_expr) => format!(
-            "(list {})",
-            array_expr
+                .map(|arg| {
+                    transform_expr(match arg {
+                        Argument::Expression(expr) => expr,
+                        _ => unimplemented!(),
+                    })
+                })
+                .collect::<Vec<_>>(),
+        }),
+        Expression::ArrayExpression(array_expr) => IRExpression::FunctionCall(FunctionCall {
+            name: "list".to_string(),
+            parameters: array_expr
                 .elements
                 .iter()
-                .map(|elem| transform_expr(match elem {
-                    ArrayExpressionElement::Expression(expr) => expr,
-                    _ => todo!(),
-                }))
-                .collect::<Vec<String>>()
-                .join(" ")
-        ),
+                .map(|elem| {
+                    transform_expr(match elem {
+                        ArrayExpressionElement::Expression(expr) => expr,
+                        _ => todo!(),
+                    })
+                })
+                .collect::<Vec<_>>(),
+        }),
         Expression::ArrowExpression(arrow_expr) => {
             assert!(arrow_expr.expression); // don't support non expression arrow expressions
-            format!(
-                "(lambda ({}) {})",
-                transform_formal_params(&arrow_expr.params),
-                transform_expr(match &arrow_expr.body.statements.iter().next().unwrap() {
-                    Statement::ExpressionStatement(expr_stmt) => &expr_stmt.expression,
-                    _ => todo!(),
-                })
-            )
+            IRExpression::Lambda(Box::new(Lambda {
+                parameters: transform_formal_params(&arrow_expr.params),
+                will_return: transform_expr(
+                    match &arrow_expr.body.statements.iter().next().unwrap() {
+                        // TODO: support function statements which should be converted to lambdas here, maybe?
+                        Statement::ExpressionStatement(expr_stmt) => &expr_stmt.expression,
+                        _ => todo!(),
+                    },
+                ),
+            }))
         }
-        Expression::LogicalExpression(logical_expr) => format!(
-            "({} {} {})",
-            match logical_expr.operator {
+        Expression::LogicalExpression(logical_expr) => IRExpression::FunctionCall(FunctionCall {
+            name: match logical_expr.operator {
                 LogicalOperator::And => "and",
                 LogicalOperator::Or => "or",
                 _ => todo!(),
-            },
-            transform_expr(&logical_expr.left),
-            transform_expr(&logical_expr.right)
-        ),
-        Expression::BooleanLiteral(blit) => match blit.value {
-            true => "#t".to_string(),
-            false => "#f".to_string(),
-        },
-        Expression::StringLiteral(slit) => format!("{}", slit.value),
+            }
+            .to_string(),
+            parameters: vec![
+                transform_expr(&logical_expr.left),
+                transform_expr(&logical_expr.right),
+            ],
+        }),
+        Expression::BooleanLiteral(blit) => IRExpression::Boolean(blit.value),
+        Expression::StringLiteral(slit) => IRExpression::String(slit.value.to_string()),
         Expression::ParenthesizedExpression(paren_expr) => transform_expr(&paren_expr.expression),
-        Expression::NumberLiteral(nlit) => nlit.value.to_string(),
-        Expression::Identifier(ident) => ident.name.to_string(),
+        Expression::NumberLiteral(nlit) => IRExpression::Number(nlit.value.to_string()),
+        Expression::Identifier(ident) => IRExpression::String(ident.name.to_string()),
         _ => todo!("{expr:#?}"),
     }
 }
 
-pub fn transform(semantic: Semantic<'_>, should_print_hashtag_racket: bool) -> String {
-    let mut lines = vec![];
-    if should_print_hashtag_racket {
-        lines.push("#lang racket".to_string());
-    }
+pub fn transform(semantic: Semantic<'_>) -> Statements {
+    let mut stmts = vec![];
     match semantic.nodes().iter().next().unwrap().kind() {
         AstKind::Program(prog) => {
             for stmt in &prog.body {
                 match stmt {
                     Statement::Declaration(decl) => match decl {
                         Declaration::FunctionDeclaration(fndecl) => {
-                            // let mut lines = vec![];
-                            lines.push(format!(
-                                "(define ({} {}) {})",
-                                fndecl.id.as_ref().unwrap().name,
-                                transform_formal_params(&fndecl.params),
-                                transform_expr(
+                            stmts.push(IRStatement::Function(FunctionStatement {
+                                name: fndecl.id.as_ref().unwrap().name.to_string(),
+                                parameters: transform_formal_params(&fndecl.params),
+                                will_return: transform_expr(
                                     fndecl
                                         .body
                                         .as_ref()
@@ -158,29 +165,31 @@ pub fn transform(semantic: Semantic<'_>, should_print_hashtag_racket: bool) -> S
                                             };
                                             ret.argument.as_ref()
                                         })
-                                        .unwrap()
-                                )
-                            ));
+                                        .unwrap(),
+                                ),
+                            }))
                         }
                         Declaration::VariableDeclaration(variable_decl) => {
                             let decl = variable_decl.declarations.iter().next().unwrap();
-                            lines.push(format!(
-                                "(define {} {})",
-                                match &decl.id.kind {
-                                    BindingPatternKind::BindingIdentifier(id) =>
-                                        id.name.to_string(),
+                            stmts.push(IRStatement::Variable(VariableStatement {
+                                name: match &decl.id.kind {
+                                    BindingPatternKind::BindingIdentifier(id) => {
+                                        id.name.to_string()
+                                    }
                                     _ => todo!(),
                                 },
-                                transform_expr(decl.init.as_ref().unwrap())
-                            ));
+                                init: transform_expr(decl.init.as_ref().unwrap()),
+                            }))
                         }
                         _ => todo!(),
                     },
                     Statement::ExpressionStatement(expr) => {
                         if let Expression::TemplateLiteral(lit) = &expr.expression {
-                            lines.push(format!("{}", lit.quasi().unwrap()));
+                            stmts.push(IRStatement::VerbatimString(
+                                lit.quasi().unwrap().to_string(),
+                            ));
                         } else {
-                            lines.push(transform_expr(&expr.expression));
+                            stmts.push(IRStatement::Expression(transform_expr(&expr.expression)));
                         }
                     }
                     _ => todo!(),
@@ -189,5 +198,5 @@ pub fn transform(semantic: Semantic<'_>, should_print_hashtag_racket: bool) -> S
         }
         _ => todo!(),
     }
-    lines.join("\n")
+    Statements(stmts)
 }

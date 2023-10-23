@@ -6,6 +6,7 @@ use oxc_semantic::SemanticBuilder;
 use oxc_span::SourceType;
 use transform::transform;
 
+mod ir;
 mod transform;
 
 fn main() {
@@ -23,5 +24,9 @@ fn main() {
         .with_trivias(ret.trivias)
         .build(program);
 
-    println!("{}", transform(semantic_ret.semantic, false));
+    if true {
+        println!("#lang racket");
+    }
+
+    println!("{}", transform(semantic_ret.semantic));
 }
