@@ -25,6 +25,18 @@ function dot(list1, list2) {
     : car(list1) * car(list2) + dot(cdr(list1), cdr(list2));
 }
 
+// Will replace array destructuring with the proper car/cdr as expected.
+// If first1 is in quotes, it will not translate additional expressions since it is literally replaced.
+// IE: return "first1"      // => car(list1)
+//     return first1        // => car(list1)
+//     return "first1 + 2"  // => first1 + 2
+function dot2(list1, list2) {
+  const [first1, ...rest1] = list1;
+  const [first2, ...rest2] = list2;
+
+  return length(list1) === 0 ? 0 : first1 * first2 + dot(rest1, rest2);
+}
+
 // "x % 2 === 0" will be transformed to "even?" call
 // transformed to: (define (is_even x) (even? x))
 function is_even(x) {
@@ -77,3 +89,10 @@ and_all_bools(cons(true, [true, true]));
 // transformed to: (map = (list 1 2 3) (list 1 2 4))
 // Will print '(#t #t #f).
 map("=", [1, 2, 3], [1, 2, 4]);
+
+// array destructuring will replace code in callbacks too,
+// the `first` will be replaced by `(car a)`
+function returns_fn_that_will_add_b_to_first_element_of_a(a) {
+  const [first] = a;
+  return (b) => first + b;
+}

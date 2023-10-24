@@ -28,5 +28,5 @@ fn main() {
         println!("#lang racket");
     }
 
-    println!("{}", transform(semantic_ret.semantic));
+    println!("{}", transform(semantic_ret.semantic).finalize());
 }
