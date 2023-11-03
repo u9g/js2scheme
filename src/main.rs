@@ -31,5 +31,5 @@ fn transform_file(file_name: &str) {
 }
 
 fn main() {
-    transform_file("working_branching_code.js");
+    transform_file("example.js");
 }

@@ -40,7 +40,20 @@ pub struct MultipleVariableDeclaration<'borrow, 'ast> {
 }
 
 #[derive(Debug)]
-pub struct SingleVariableDeclaration<'borrow, 'ast> {
+pub enum SingleVariableDeclaration<'borrow, 'ast> {
+    PrimitiveDeclaration(PrimitiveDeclaration<'borrow, 'ast>),
+    ArrayIndexedDeclaration(ArrayIndexedDeclaration<'borrow, 'ast>),
+}
+
+#[derive(Debug)]
+pub struct ArrayIndexedDeclaration<'borrow, 'ast> {
+    pub name: String,
+    pub element_index: usize,
+    pub array: &'borrow Expression<'ast>,
+}
+
+#[derive(Debug)]
+pub struct PrimitiveDeclaration<'borrow, 'ast> {
     pub name: String,
     pub value: &'borrow Expression<'ast>,
 }
@@ -136,23 +149,45 @@ fn cfg_component_from_stmt<'a, 'b>(
             Declaration::VariableDeclaration(variable_declarations) => {
                 let mut variables = vec![];
                 for vdecl in &variable_declarations.declarations {
-                    match &vdecl.id.kind {
-                        BindingPatternKind::BindingIdentifier(variable_name) => {
-                            if let Some(init) = &vdecl.init {
-                                variables.push(SingleVariableDeclaration {
-                                    name: variable_name.name.to_string(),
-                                    value: init,
-                                })
-                            } else {
-                                return Err(ControlFlowGraphError::VariableWithoutValue(
-                                    "".to_string(),
-                                    vdecl.span,
+                    if let Some(init) = &vdecl.init {
+                        match &vdecl.id.kind {
+                            BindingPatternKind::BindingIdentifier(variable_name) => {
+                                variables.push(SingleVariableDeclaration::PrimitiveDeclaration(
+                                    PrimitiveDeclaration {
+                                        name: variable_name.name.to_string(),
+                                        value: init,
+                                    },
                                 ));
                             }
+                            BindingPatternKind::ObjectPattern(_) => todo!(),
+                            BindingPatternKind::ArrayPattern(array_pattern) => array_pattern
+                                .elements
+                                .iter()
+                                .enumerate()
+                                .filter_map(|x| x.1.as_ref().map(|v| (x.0, v)))
+                                .for_each(|(element_index, name)| {
+                                    variables.push(
+                                        SingleVariableDeclaration::ArrayIndexedDeclaration(
+                                            ArrayIndexedDeclaration {
+                                                name: match &name.kind {
+                                                    BindingPatternKind::BindingIdentifier(id) => {
+                                                        id.name.to_string()
+                                                    }
+                                                    _ => unimplemented!(),
+                                                },
+                                                element_index,
+                                                array: init,
+                                            },
+                                        ),
+                                    )
+                                }),
+                            BindingPatternKind::AssignmentPattern(_) => todo!(),
                         }
-                        BindingPatternKind::ObjectPattern(_) => todo!(),
-                        BindingPatternKind::ArrayPattern(_) => todo!(),
-                        BindingPatternKind::AssignmentPattern(_) => todo!(),
+                    } else {
+                        return Err(ControlFlowGraphError::VariableWithoutValue(
+                            "".to_string(),
+                            vdecl.span,
+                        ));
                     }
                 }
                 Ok(ControlFlowComponent::VariableDeclaration(

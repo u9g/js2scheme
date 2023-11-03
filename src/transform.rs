@@ -11,7 +11,7 @@ use oxc_semantic::Semantic;
 use oxc_syntax::operator::{BinaryOperator, LogicalOperator, UnaryOperator};
 
 use crate::{
-    cfg::{make_cfg, ControlFlowComponent, Scope},
+    cfg::{make_cfg, ControlFlowComponent, Scope, SingleVariableDeclaration},
     ir::{
         Expression as IRExpression, FunctionStatement, Lambda, Statement as IRStatement,
         Statements, VariableStatement,
@@ -183,23 +183,52 @@ where
                 arguments.push((IfStatementCondition::Else, scope_to_expression(s)))
             }
             ControlFlowComponent::VariableDeclaration(vdecl) => {
-                let mut arguments_to_let = vec![];
-
-                for var in &vdecl.variables {
-                    arguments_to_let.push(IRExpression::function_call(
-                        "",
-                        vec![
-                            IRExpression::String(var.name.clone()),
-                            transform_expr(var.value),
-                        ],
-                    ))
+                // slurp up all variable declarations into the same letrec block
+                let mut vdecls = vec![vdecl];
+                while let Some(ControlFlowComponent::VariableDeclaration(_)) = iter.peek() {
+                    let Some(ControlFlowComponent::VariableDeclaration(vdecl)) =
+                        iter.next() else {unreachable!("verified by while cond")};
+                    vdecls.push(vdecl);
                 }
 
-                arguments_to_let.push(component_iterator_to_expr(iter));
+                let mut arguments_to_let = vec![];
+
+                for variable in vdecls.iter().flat_map(|it| &it.variables) {
+                    match variable {
+                        SingleVariableDeclaration::PrimitiveDeclaration(primitive_var) => {
+                            arguments_to_let.push(IRExpression::function_call(
+                                "",
+                                vec![
+                                    IRExpression::String(primitive_var.name.clone()),
+                                    transform_expr(primitive_var.value),
+                                ],
+                            ));
+                        }
+                        SingleVariableDeclaration::ArrayIndexedDeclaration(aid) => {
+                            let mut base = transform_expr(aid.array);
+                            for _ in 0..aid.element_index {
+                                base = IRExpression::function_call("cdr", vec![base])
+                            }
+                            arguments_to_let.push(IRExpression::function_call(
+                                "",
+                                vec![
+                                    IRExpression::String(aid.name.clone()),
+                                    IRExpression::function_call("car", vec![base]),
+                                ],
+                            ))
+                        }
+                    }
+                }
 
                 arguments.push((
                     IfStatementCondition::Else,
-                    IRExpression::function_call("letrec", arguments_to_let),
+                    IRExpression::function_call(
+                        "letrec",
+                        vec![
+                            IRExpression::function_call("", arguments_to_let),
+                            component_iterator_to_expr(iter),
+                        ],
+                    ),
                 ));
                 break;
             }

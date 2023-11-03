@@ -7,7 +7,8 @@ function apple(x) {
 
   if (x < 2) {
     if (y < 5) {
-      return 4;
+      const [apple] = y;
+      return y;
     }
     return 3;
   }
