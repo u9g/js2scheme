@@ -110,19 +110,17 @@ fn transform_expr(expr: &Expression) -> IRExpression {
                 })
                 .collect::<Vec<_>>(),
         ),
-        Expression::ArrowExpression(arrow_expr) => {
-            assert!(arrow_expr.expression); // don't support non expression arrow expressions
-            IRExpression::Lambda(Box::new(Lambda {
-                parameters: transform_formal_params(&arrow_expr.params),
-                will_return: transform_expr(
-                    match &arrow_expr.body.statements.iter().next().unwrap() {
-                        // TODO: support function statements which should be converted to lambdas here, maybe?
-                        Statement::ExpressionStatement(expr_stmt) => &expr_stmt.expression,
-                        _ => todo!(),
-                    },
-                ),
-            }))
-        }
+        Expression::ArrowExpression(arrow_expr) => IRExpression::Lambda(Box::new(Lambda {
+            parameters: transform_formal_params(&arrow_expr.params),
+            will_return: if arrow_expr.expression {
+                transform_expr(match &arrow_expr.body.statements.iter().next().unwrap() {
+                    Statement::ExpressionStatement(expr_stmt) => &expr_stmt.expression,
+                    _ => todo!(),
+                })
+            } else {
+                walk_cfg_to_transform(&arrow_expr.body)
+            },
+        })),
         Expression::LogicalExpression(logical_expr) => IRExpression::function_call(
             match logical_expr.operator {
                 LogicalOperator::And => "and",
