@@ -1,6 +1,6 @@
 use miette::Diagnostic;
 use oxc_allocator::Vec as BVec;
-use oxc_ast::ast::{Expression, FunctionBody, Statement};
+use oxc_ast::ast::{BindingPatternKind, Declaration, Expression, FunctionBody, Statement};
 use oxc_span::Span;
 use thiserror::Error;
 
@@ -14,6 +14,7 @@ pub enum ControlFlowComponent<'borrow, 'ast> {
     Return(ReturnComponent<'borrow, 'ast>),
     IfStatement(Box<IfStatementComponent<'borrow, 'ast>>),
     Scope(Scope<'borrow, 'ast>),
+    VariableDeclaration(MultipleVariableDeclaration<'borrow, 'ast>),
 }
 
 impl<'borrow, 'ast> ControlFlowComponent<'borrow, 'ast> {
@@ -31,6 +32,17 @@ impl<'borrow, 'ast> ControlFlowComponent<'borrow, 'ast> {
     fn new_scope(scope: Scope<'borrow, 'ast>) -> Self {
         ControlFlowComponent::Scope(scope)
     }
+}
+
+#[derive(Debug)]
+pub struct MultipleVariableDeclaration<'borrow, 'ast> {
+    pub variables: Vec<SingleVariableDeclaration<'borrow, 'ast>>,
+}
+
+#[derive(Debug)]
+pub struct SingleVariableDeclaration<'borrow, 'ast> {
+    pub name: String,
+    pub value: &'borrow Expression<'ast>,
 }
 
 #[derive(Debug)]
@@ -55,6 +67,11 @@ pub enum ControlFlowGraphError {
     ScopeDoesNotUnconditionallyReturn(
         #[source_code] String,
         #[label("Scope that doesn't return")] Span,
+    ),
+    #[error("All variables must be initialized")]
+    VariableWithoutValue(
+        #[source_code] String,
+        #[label("Variable is not initialized")] Span,
     ),
 }
 
@@ -115,7 +132,41 @@ fn cfg_component_from_stmt<'a, 'b>(
         Statement::WhileStatement(_) => todo!(),
         Statement::WithStatement(_) => todo!(),
         Statement::ModuleDeclaration(_) => todo!(),
-        Statement::Declaration(_) => todo!(),
+        Statement::Declaration(declaration) => match declaration {
+            Declaration::VariableDeclaration(variable_declarations) => {
+                let mut variables = vec![];
+                for vdecl in &variable_declarations.declarations {
+                    match &vdecl.id.kind {
+                        BindingPatternKind::BindingIdentifier(variable_name) => {
+                            if let Some(init) = &vdecl.init {
+                                variables.push(SingleVariableDeclaration {
+                                    name: variable_name.name.to_string(),
+                                    value: init,
+                                })
+                            } else {
+                                return Err(ControlFlowGraphError::VariableWithoutValue(
+                                    "".to_string(),
+                                    vdecl.span,
+                                ));
+                            }
+                        }
+                        BindingPatternKind::ObjectPattern(_) => todo!(),
+                        BindingPatternKind::ArrayPattern(_) => todo!(),
+                        BindingPatternKind::AssignmentPattern(_) => todo!(),
+                    }
+                }
+                Ok(ControlFlowComponent::VariableDeclaration(
+                    MultipleVariableDeclaration { variables },
+                ))
+            }
+            Declaration::FunctionDeclaration(_) => todo!(),
+            Declaration::ClassDeclaration(_) => todo!(),
+            Declaration::TSTypeAliasDeclaration(_) => todo!(),
+            Declaration::TSInterfaceDeclaration(_) => todo!(),
+            Declaration::TSEnumDeclaration(_) => todo!(),
+            Declaration::TSModuleDeclaration(_) => todo!(),
+            Declaration::TSImportEqualsDeclaration(_) => todo!(),
+        },
     }
 }
 

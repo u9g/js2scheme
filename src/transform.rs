@@ -1,3 +1,5 @@
+use std::iter::Peekable;
+
 use oxc_ast::{
     ast::{
         Argument, ArrayExpressionElement, BindingPatternKind, Declaration, Expression,
@@ -150,14 +152,25 @@ fn control_flow_to_expr(s: &ControlFlowComponent) -> IRExpression {
     match s {
         ControlFlowComponent::Return(ret) => transform_expr(ret.expr),
         ControlFlowComponent::IfStatement(_) => unimplemented!(),
+        ControlFlowComponent::VariableDeclaration(_) => unimplemented!(), //can only happen if the if statement is just a variable declaration
         ControlFlowComponent::Scope(s) => scope_to_expression(s),
     }
 }
 
-fn scope_to_expression(s: &Scope) -> IRExpression {
-    let comps = s.components.iter();
+// impl Iterator<Item = &'iter_item ControlFlowComponent<'borrow, 'ast>>
+
+fn component_iterator_to_expr<'iter_item, 'borrow: 'iter_item, 'ast: 'borrow, I>(
+    comps: Peekable<I>,
+) -> IRExpression
+where
+    I: Iterator<Item = &'iter_item ControlFlowComponent<'borrow, 'ast>>,
+{
+    let mut iter = comps;
     let mut arguments = vec![];
-    for comp in comps {
+    while iter.peek().is_some() {
+        let comp = iter
+            .next()
+            .expect("our while loop tells us there is something here");
         match comp {
             ControlFlowComponent::Return(ret) => {
                 arguments.push((IfStatementCondition::Else, transform_expr(ret.expr)))
@@ -168,6 +181,27 @@ fn scope_to_expression(s: &Scope) -> IRExpression {
             )),
             ControlFlowComponent::Scope(s) => {
                 arguments.push((IfStatementCondition::Else, scope_to_expression(s)))
+            }
+            ControlFlowComponent::VariableDeclaration(vdecl) => {
+                let mut arguments_to_let = vec![];
+
+                for var in &vdecl.variables {
+                    arguments_to_let.push(IRExpression::function_call(
+                        "",
+                        vec![
+                            IRExpression::String(var.name.clone()),
+                            transform_expr(var.value),
+                        ],
+                    ))
+                }
+
+                arguments_to_let.push(component_iterator_to_expr(iter));
+
+                arguments.push((
+                    IfStatementCondition::Else,
+                    IRExpression::function_call("letrec", arguments_to_let),
+                ));
+                break;
             }
         }
     }
@@ -197,6 +231,10 @@ fn scope_to_expression(s: &Scope) -> IRExpression {
     }
 
     IRExpression::function_call("cond", branches)
+}
+
+fn scope_to_expression(s: &Scope) -> IRExpression {
+    component_iterator_to_expr(s.components.iter().peekable())
 }
 
 fn walk_cfg_to_transform(fn_body: &FunctionBody) -> IRExpression {

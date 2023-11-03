@@ -1,6 +1,8 @@
-function apple(x, y) {
+function apple(x) {
+  let y = x + 2;
   if (x < 1) {
-    return 2;
+    let j = 10 + x;
+    return j;
   }
 
   if (x < 2) {
