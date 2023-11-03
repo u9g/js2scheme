@@ -6,13 +6,12 @@ use oxc_semantic::SemanticBuilder;
 use oxc_span::SourceType;
 use transform::transform;
 
+mod cfg;
 mod ir;
 mod transform;
 
-fn main() {
-    let name = env::args()
-        .nth(1)
-        .unwrap_or_else(|| "example.js".to_string());
+fn transform_file(file_name: &str) {
+    let name = env::args().nth(1).unwrap_or_else(|| file_name.to_string());
     let path = Path::new(&name);
     let source_text = std::fs::read_to_string(path).unwrap_or_else(|_| panic!("{name} not found"));
     let allocator = Allocator::default();
@@ -29,4 +28,8 @@ fn main() {
     }
 
     println!("{}", transform(semantic_ret.semantic).finalize());
+}
+
+fn main() {
+    transform_file("working_branching_code.js");
 }

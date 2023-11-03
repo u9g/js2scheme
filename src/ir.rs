@@ -13,7 +13,7 @@ fn patch_expression_with_destructed_array_parts(
     let mut replace_expr_with_this = None;
     match expr {
         Expression::FunctionCall(ref mut func) => {
-            let params = func.parameters.replace(vec![]).unwrap();
+            let params = func.arguments.replace(vec![]).unwrap();
             let new_params = params
                 .into_iter()
                 .map(|mut x| {
@@ -21,7 +21,7 @@ fn patch_expression_with_destructed_array_parts(
                     x
                 })
                 .collect::<Vec<_>>();
-            func.parameters.replace(new_params);
+            func.arguments.replace(new_params);
         }
         Expression::Lambda(ref mut lambda) => {
             patch_expression_with_destructed_array_parts(&mut lambda.will_return, parts);
@@ -101,7 +101,7 @@ impl Expression {
     pub fn function_call(name: impl AsRef<str>, parameters: Vec<Expression>) -> Self {
         Expression::FunctionCall(FunctionCall {
             name: name.as_ref().to_string(),
-            parameters: Some(parameters),
+            arguments: Some(parameters),
         })
     }
 }
@@ -129,7 +129,7 @@ pub struct VariableStatement {
 #[derive(Debug, Clone)]
 pub struct FunctionCall {
     pub name: String,
-    pub parameters: Option<Vec<Expression>>,
+    pub arguments: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
@@ -180,9 +180,10 @@ impl Display for Expression {
             Expression::FunctionCall(func) => {
                 write!(
                     f,
-                    "({} {})",
+                    "({}{}{})",
                     func.name,
-                    func.parameters
+                    if func.name.is_empty() { "" } else { " " },
+                    func.arguments
                         .as_ref()
                         .unwrap()
                         .iter()

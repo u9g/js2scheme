@@ -8,9 +8,12 @@ use oxc_ast::{
 use oxc_semantic::Semantic;
 use oxc_syntax::operator::{BinaryOperator, LogicalOperator, UnaryOperator};
 
-use crate::ir::{
-    DestructuredArrayPart, DestructuredArrayPartIndex, Expression as IRExpression,
-    FunctionStatement, Lambda, Statement as IRStatement, StatementsBuilder, VariableStatement,
+use crate::{
+    cfg::{make_cfg, ControlFlowComponent, Scope},
+    ir::{
+        DestructuredArrayPart, Expression as IRExpression, FunctionStatement, Lambda,
+        Statement as IRStatement, StatementsBuilder, VariableStatement,
+    },
 };
 
 fn transform_formal_params(formal_params: &FormalParameters) -> Vec<String> {
@@ -138,69 +141,67 @@ fn transform_expr(expr: &Expression) -> IRExpression {
     }
 }
 
-fn expression_as_identifier(expression: &Expression) -> Option<String> {
-    match expression {
-        Expression::StringLiteral(slit) => Some(slit.value.to_string()),
-        Expression::Identifier(ident) => Some(ident.name.to_string()),
-        _ => None,
+enum IfStatementCondition<'borrow, 'ast> {
+    Condition(&'borrow Expression<'ast>),
+    True,
+    Else,
+}
+
+fn control_flow_to_expr(s: &ControlFlowComponent) -> IRExpression {
+    match s {
+        ControlFlowComponent::Return(ret) => transform_expr(ret.expr),
+        ControlFlowComponent::IfStatement(_) => unimplemented!(),
+        ControlFlowComponent::Scope(s) => scope_to_expression(s),
     }
 }
 
-fn parse_fn_body(fn_body: &FunctionBody) -> (Vec<DestructuredArrayPart>, IRExpression) {
-    let mut destructured_arrays = vec![];
-    let mut return_statement = None;
-    for statement in &fn_body.statements {
-        match statement {
-            Statement::Declaration(decl) => match decl {
-                Declaration::VariableDeclaration(var_decl) => {
-                    for variable_declaration in &var_decl.declarations {
-                        let array_name =
-                            expression_as_identifier(variable_declaration.init.as_ref().unwrap())
-                                .unwrap();
-                        match &variable_declaration.id.kind {
-                            BindingPatternKind::ArrayPattern(array) => {
-                                for (ix, array_part) in array.elements.iter().enumerate() {
-                                    match array_part.as_ref().map(|x| &x.kind) {
-                                        Some(BindingPatternKind::BindingIdentifier(identifier)) => {
-                                            destructured_arrays.push(DestructuredArrayPart {
-                                                index: DestructuredArrayPartIndex::Indexed(ix),
-                                                identifier_name: identifier.name.to_string(),
-                                                base_array: array_name.clone(),
-                                            });
-                                        }
-                                        None => {}
-                                        _ => unimplemented!(),
-                                    }
-                                }
-                                if let Some(rest) = &array.rest {
-                                    match &rest.argument.kind {
-                                        BindingPatternKind::BindingIdentifier(identifier) => {
-                                            destructured_arrays.push(DestructuredArrayPart {
-                                                index: DestructuredArrayPartIndex::Rest,
-                                                identifier_name: identifier.name.to_string(),
-                                                base_array: array_name.clone(),
-                                            });
-                                        }
-                                        _ => unimplemented!(),
-                                    }
-                                }
-                            }
-                            _ => unimplemented!(),
-                        }
-                    }
-                }
-                _ => unimplemented!(),
-            },
-            Statement::ReturnStatement(found_return_stmt) => {
-                return_statement = Some(found_return_stmt)
+fn scope_to_expression(s: &Scope) -> IRExpression {
+    let comps = s.components.iter();
+    let mut arguments = vec![];
+    for comp in comps {
+        match comp {
+            ControlFlowComponent::Return(ret) => {
+                arguments.push((IfStatementCondition::Else, transform_expr(ret.expr)))
             }
-            _ => unimplemented!(),
+            ControlFlowComponent::IfStatement(ifs) => arguments.push((
+                IfStatementCondition::Condition(ifs.test),
+                control_flow_to_expr(&ifs.consequent),
+            )),
+            ControlFlowComponent::Scope(s) => {
+                arguments.push((IfStatementCondition::True, scope_to_expression(s)))
+            }
         }
     }
-    (
-        destructured_arrays,
-        transform_expr(return_statement.unwrap().argument.as_ref().unwrap()),
+
+    let mut iter = arguments.into_iter().peekable();
+
+    // Don't generate cond for just a return.
+    if let Some((IfStatementCondition::Else, _)) = iter.peek() {
+        return iter.next().unwrap().1;
+    }
+
+    IRExpression::function_call(
+        "cond",
+        iter.map(|x| {
+            let cond = match x.0 {
+                IfStatementCondition::Condition(condition) => transform_expr(condition),
+                IfStatementCondition::Else => IRExpression::String("else".to_string()),
+                IfStatementCondition::True => IRExpression::Boolean(true),
+            };
+            IRExpression::function_call("", vec![cond, x.1])
+        })
+        .collect(),
     )
+}
+
+fn walk_cfg_to_transform(fn_body: &FunctionBody) -> (Vec<DestructuredArrayPart>, IRExpression) {
+    let cfg = make_cfg(fn_body).unwrap();
+
+    let expr = scope_to_expression(&cfg);
+
+    println!("{:#?}", cfg);
+
+    (vec![], expr)
 }
 
 pub fn transform(semantic: Semantic<'_>) -> StatementsBuilder {
@@ -211,8 +212,10 @@ pub fn transform(semantic: Semantic<'_>) -> StatementsBuilder {
                 match stmt {
                     Statement::Declaration(decl) => match decl {
                         Declaration::FunctionDeclaration(fndecl) => {
+                            // let (destructed_array_parts, will_return) =
+                            //     parse_fn_body(fndecl.body.as_ref().unwrap());
                             let (destructed_array_parts, will_return) =
-                                parse_fn_body(fndecl.body.as_ref().unwrap());
+                                walk_cfg_to_transform(fndecl.body.as_ref().unwrap());
                             stmts.push(IRStatement::Function(FunctionStatement {
                                 name: fndecl.id.as_ref().unwrap().name.to_string(),
                                 parameters: transform_formal_params(&fndecl.params),
