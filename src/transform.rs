@@ -143,7 +143,6 @@ fn transform_expr(expr: &Expression) -> IRExpression {
 
 enum IfStatementCondition<'borrow, 'ast> {
     Condition(&'borrow Expression<'ast>),
-    True,
     Else,
 }
 
@@ -168,7 +167,7 @@ fn scope_to_expression(s: &Scope) -> IRExpression {
                 control_flow_to_expr(&ifs.consequent),
             )),
             ControlFlowComponent::Scope(s) => {
-                arguments.push((IfStatementCondition::True, scope_to_expression(s)))
+                arguments.push((IfStatementCondition::Else, scope_to_expression(s)))
             }
         }
     }
@@ -180,18 +179,24 @@ fn scope_to_expression(s: &Scope) -> IRExpression {
         return iter.next().unwrap().1;
     }
 
-    IRExpression::function_call(
-        "cond",
-        iter.map(|x| {
-            let cond = match x.0 {
-                IfStatementCondition::Condition(condition) => transform_expr(condition),
-                IfStatementCondition::Else => IRExpression::String("else".to_string()),
-                IfStatementCondition::True => IRExpression::Boolean(true),
-            };
-            IRExpression::function_call("", vec![cond, x.1])
-        })
-        .collect(),
-    )
+    let mut branches = vec![];
+
+    for condition_branch in iter {
+        if let IfStatementCondition::Condition(cond) = condition_branch.0 {
+            branches.push(IRExpression::function_call(
+                "",
+                vec![transform_expr(cond), condition_branch.1],
+            ));
+        } else {
+            branches.push(IRExpression::function_call(
+                "",
+                vec![IRExpression::String("else".to_string()), condition_branch.1],
+            ));
+            break;
+        };
+    }
+
+    IRExpression::function_call("cond", branches)
 }
 
 fn walk_cfg_to_transform(fn_body: &FunctionBody) -> IRExpression {
