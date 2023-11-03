@@ -27,7 +27,7 @@ fn transform_file(file_name: &str) {
         println!("#lang racket");
     }
 
-    println!("{}", transform(semantic_ret.semantic).finalize());
+    println!("{}", transform(semantic_ret.semantic));
 }
 
 fn main() {

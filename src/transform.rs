@@ -11,8 +11,8 @@ use oxc_syntax::operator::{BinaryOperator, LogicalOperator, UnaryOperator};
 use crate::{
     cfg::{make_cfg, ControlFlowComponent, Scope},
     ir::{
-        DestructuredArrayPart, Expression as IRExpression, FunctionStatement, Lambda,
-        Statement as IRStatement, StatementsBuilder, VariableStatement,
+        Expression as IRExpression, FunctionStatement, Lambda, Statement as IRStatement,
+        Statements, VariableStatement,
     },
 };
 
@@ -194,17 +194,13 @@ fn scope_to_expression(s: &Scope) -> IRExpression {
     )
 }
 
-fn walk_cfg_to_transform(fn_body: &FunctionBody) -> (Vec<DestructuredArrayPart>, IRExpression) {
+fn walk_cfg_to_transform(fn_body: &FunctionBody) -> IRExpression {
     let cfg = make_cfg(fn_body).unwrap();
 
-    let expr = scope_to_expression(&cfg);
-
-    println!("{:#?}", cfg);
-
-    (vec![], expr)
+    scope_to_expression(&cfg)
 }
 
-pub fn transform(semantic: Semantic<'_>) -> StatementsBuilder {
+pub fn transform(semantic: Semantic<'_>) -> Statements {
     let mut stmts = vec![];
     match semantic.nodes().iter().next().unwrap().kind() {
         AstKind::Program(prog) => {
@@ -212,15 +208,10 @@ pub fn transform(semantic: Semantic<'_>) -> StatementsBuilder {
                 match stmt {
                     Statement::Declaration(decl) => match decl {
                         Declaration::FunctionDeclaration(fndecl) => {
-                            // let (destructed_array_parts, will_return) =
-                            //     parse_fn_body(fndecl.body.as_ref().unwrap());
-                            let (destructed_array_parts, will_return) =
-                                walk_cfg_to_transform(fndecl.body.as_ref().unwrap());
                             stmts.push(IRStatement::Function(FunctionStatement {
                                 name: fndecl.id.as_ref().unwrap().name.to_string(),
                                 parameters: transform_formal_params(&fndecl.params),
-                                will_return,
-                                destructed_array_parts,
+                                will_return: walk_cfg_to_transform(fndecl.body.as_ref().unwrap()),
                             }))
                         }
                         Declaration::VariableDeclaration(variable_decl) => {
@@ -252,5 +243,5 @@ pub fn transform(semantic: Semantic<'_>) -> StatementsBuilder {
         }
         _ => todo!(),
     }
-    StatementsBuilder(stmts)
+    Statements(stmts)
 }
