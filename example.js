@@ -31,10 +31,13 @@ function dot(list1, list2) {
 //     return first1        // => car(list1)
 //     return "first1 + 2"  // => first1 + 2
 function dot2(list1, list2) {
+  if (length(list1) === 0) {
+    return 0;
+  }
+
   const [first1, ...rest1] = list1;
   const [first2, ...rest2] = list2;
-
-  return length(list1) === 0 ? 0 : first1 * first2 + dot(rest1, rest2);
+  return first1 * first2 + dot2(rest1, rest2);
 }
 
 // "x % 2 === 0" will be transformed to "even?" call

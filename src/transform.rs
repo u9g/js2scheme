@@ -195,7 +195,7 @@ where
 
                 for variable in vdecls.iter().flat_map(|it| &it.variables) {
                     match variable {
-                        SingleVariableDeclaration::PrimitiveDeclaration(primitive_var) => {
+                        SingleVariableDeclaration::Primitive(primitive_var) => {
                             arguments_to_let.push(IRExpression::function_call(
                                 "",
                                 vec![
@@ -204,7 +204,7 @@ where
                                 ],
                             ));
                         }
-                        SingleVariableDeclaration::ArrayIndexedDeclaration(aid) => {
+                        SingleVariableDeclaration::ArrayIndex(aid) => {
                             let mut base = transform_expr(aid.array);
                             for _ in 0..aid.element_index {
                                 base = IRExpression::function_call("cdr", vec![base])
@@ -215,6 +215,16 @@ where
                                     IRExpression::String(aid.name.clone()),
                                     IRExpression::function_call("car", vec![base]),
                                 ],
+                            ))
+                        }
+                        SingleVariableDeclaration::ArrayRest(rest) => {
+                            let mut base = transform_expr(rest.array);
+                            for _ in 0..rest.elements_before_rest {
+                                base = IRExpression::function_call("cdr", vec![base]);
+                            }
+                            arguments_to_let.push(IRExpression::function_call(
+                                "",
+                                vec![IRExpression::String(rest.name.clone()), base],
                             ))
                         }
                     }

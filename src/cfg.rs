@@ -41,8 +41,16 @@ pub struct MultipleVariableDeclaration<'borrow, 'ast> {
 
 #[derive(Debug)]
 pub enum SingleVariableDeclaration<'borrow, 'ast> {
-    PrimitiveDeclaration(PrimitiveDeclaration<'borrow, 'ast>),
-    ArrayIndexedDeclaration(ArrayIndexedDeclaration<'borrow, 'ast>),
+    Primitive(PrimitiveDeclaration<'borrow, 'ast>),
+    ArrayIndex(ArrayIndexedDeclaration<'borrow, 'ast>),
+    ArrayRest(RestDeclaration<'borrow, 'ast>),
+}
+
+#[derive(Debug)]
+pub struct RestDeclaration<'borrow, 'ast> {
+    pub name: String,
+    pub elements_before_rest: usize,
+    pub array: &'borrow Expression<'ast>,
 }
 
 #[derive(Debug)]
@@ -149,25 +157,25 @@ fn cfg_component_from_stmt<'a, 'b>(
             Declaration::VariableDeclaration(variable_declarations) => {
                 let mut variables = vec![];
                 for vdecl in &variable_declarations.declarations {
-                    if let Some(init) = &vdecl.init {
+                    if let Some(array) = &vdecl.init {
                         match &vdecl.id.kind {
                             BindingPatternKind::BindingIdentifier(variable_name) => {
-                                variables.push(SingleVariableDeclaration::PrimitiveDeclaration(
+                                variables.push(SingleVariableDeclaration::Primitive(
                                     PrimitiveDeclaration {
                                         name: variable_name.name.to_string(),
-                                        value: init,
+                                        value: array,
                                     },
                                 ));
                             }
                             BindingPatternKind::ObjectPattern(_) => todo!(),
-                            BindingPatternKind::ArrayPattern(array_pattern) => array_pattern
-                                .elements
-                                .iter()
-                                .enumerate()
-                                .filter_map(|x| x.1.as_ref().map(|v| (x.0, v)))
-                                .for_each(|(element_index, name)| {
-                                    variables.push(
-                                        SingleVariableDeclaration::ArrayIndexedDeclaration(
+                            BindingPatternKind::ArrayPattern(array_pattern) => {
+                                array_pattern
+                                    .elements
+                                    .iter()
+                                    .enumerate()
+                                    .filter_map(|x| x.1.as_ref().map(|v| (x.0, v)))
+                                    .for_each(|(element_index, name)| {
+                                        variables.push(SingleVariableDeclaration::ArrayIndex(
                                             ArrayIndexedDeclaration {
                                                 name: match &name.kind {
                                                     BindingPatternKind::BindingIdentifier(id) => {
@@ -176,11 +184,28 @@ fn cfg_component_from_stmt<'a, 'b>(
                                                     _ => unimplemented!(),
                                                 },
                                                 element_index,
-                                                array: init,
+                                                array,
                                             },
-                                        ),
-                                    )
-                                }),
+                                        ))
+                                    });
+                                if let Some(rest) = &array_pattern.rest {
+                                    let name = match &rest.argument.kind {
+                                        BindingPatternKind::BindingIdentifier(name) => {
+                                            name.name.to_string()
+                                        }
+                                        _ => unimplemented!(),
+                                    };
+                                    let elements_before_rest =
+                                        array_pattern.elements.iter().count();
+                                    variables.push(SingleVariableDeclaration::ArrayRest(
+                                        RestDeclaration {
+                                            name,
+                                            elements_before_rest,
+                                            array,
+                                        },
+                                    ))
+                                }
+                            }
                             BindingPatternKind::AssignmentPattern(_) => todo!(),
                         }
                     } else {
