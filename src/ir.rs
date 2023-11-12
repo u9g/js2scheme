@@ -23,9 +23,13 @@ pub enum Expression {
 }
 
 impl Expression {
-    pub fn function_call(name: impl AsRef<str>, parameters: Vec<Expression>) -> Self {
+    pub fn named_function_call(name: impl AsRef<str>, parameters: Vec<Expression>) -> Self {
+        Self::function_call(Expression::String(name.as_ref().to_string()), parameters)
+    }
+
+    pub fn function_call(callee: Expression, parameters: Vec<Expression>) -> Self {
         Expression::FunctionCall(FunctionCall {
-            name: name.as_ref().to_string(),
+            callee: callee.into(),
             arguments: Some(parameters),
         })
     }
@@ -52,7 +56,7 @@ pub struct VariableStatement {
 
 #[derive(Debug, Clone)]
 pub struct FunctionCall {
-    pub name: String,
+    pub callee: Box<Expression>,
     pub arguments: Option<Vec<Expression>>,
 }
 
@@ -91,9 +95,8 @@ impl Display for Expression {
             Expression::FunctionCall(func) => {
                 write!(
                     f,
-                    "({}{}{})",
-                    func.name,
-                    if func.name.is_empty() { "" } else { " " },
+                    "({} {})",
+                    func.callee,
                     func.arguments
                         .as_ref()
                         .unwrap()

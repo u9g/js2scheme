@@ -40,7 +40,7 @@ fn transform_expr(expr: &Expression) -> IRExpression {
                 if let Expression::BinaryExpression(binexpr) = &expr.left {
                     if let Expression::NumberLiteral(nlit) = &binexpr.right {
                         if nlit.raw == "2" {
-                            return IRExpression::function_call(
+                            return IRExpression::named_function_call(
                                 "even?",
                                 vec![transform_expr(&binexpr.left)],
                             );
@@ -48,7 +48,7 @@ fn transform_expr(expr: &Expression) -> IRExpression {
                     }
                 }
             }
-            IRExpression::function_call(
+            IRExpression::named_function_call(
                 match expr.operator {
                     BinaryOperator::Multiplication => "*",
                     BinaryOperator::Addition => "+",
@@ -65,7 +65,7 @@ fn transform_expr(expr: &Expression) -> IRExpression {
                 vec![transform_expr(&expr.left), transform_expr(&expr.right)],
             )
         }
-        Expression::ConditionalExpression(cond_expr) => IRExpression::function_call(
+        Expression::ConditionalExpression(cond_expr) => IRExpression::named_function_call(
             "if",
             vec![
                 transform_expr(&cond_expr.test),
@@ -73,7 +73,7 @@ fn transform_expr(expr: &Expression) -> IRExpression {
                 transform_expr(&cond_expr.alternate),
             ],
         ),
-        Expression::UnaryExpression(unexpr) => IRExpression::function_call(
+        Expression::UnaryExpression(unexpr) => IRExpression::named_function_call(
             match unexpr.operator {
                 UnaryOperator::UnaryNegation => "-",
                 _ => unimplemented!(),
@@ -82,9 +82,10 @@ fn transform_expr(expr: &Expression) -> IRExpression {
         ),
         Expression::CallExpression(call_expr) => IRExpression::function_call(
             match &call_expr.callee {
-                Expression::Identifier(ident) => &ident.name,
-                Expression::StringLiteral(slit) => &slit.value,
-                _ => unimplemented!(),
+                Expression::Identifier(ident) => IRExpression::String(ident.name.to_string()),
+                Expression::StringLiteral(slit) => IRExpression::String(slit.value.to_string()),
+                Expression::CallExpression(_) => transform_expr(&call_expr.callee),
+                _ => unimplemented!("{:#?}", call_expr.callee),
             },
             call_expr
                 .arguments
@@ -97,7 +98,7 @@ fn transform_expr(expr: &Expression) -> IRExpression {
                 })
                 .collect::<Vec<_>>(),
         ),
-        Expression::ArrayExpression(array_expr) => IRExpression::function_call(
+        Expression::ArrayExpression(array_expr) => IRExpression::named_function_call(
             "list",
             array_expr
                 .elements
@@ -121,7 +122,7 @@ fn transform_expr(expr: &Expression) -> IRExpression {
                 walk_cfg_to_transform(&arrow_expr.body)
             },
         })),
-        Expression::LogicalExpression(logical_expr) => IRExpression::function_call(
+        Expression::LogicalExpression(logical_expr) => IRExpression::named_function_call(
             match logical_expr.operator {
                 LogicalOperator::And => "and",
                 LogicalOperator::Or => "or",
@@ -194,7 +195,7 @@ where
                 for variable in vdecls.iter().flat_map(|it| &it.variables) {
                     match variable {
                         SingleVariableDeclaration::Primitive(primitive_var) => {
-                            arguments_to_let.push(IRExpression::function_call(
+                            arguments_to_let.push(IRExpression::named_function_call(
                                 "",
                                 vec![
                                     IRExpression::String(primitive_var.name.clone()),
@@ -205,22 +206,22 @@ where
                         SingleVariableDeclaration::ArrayIndex(aid) => {
                             let mut base = transform_expr(aid.array);
                             for _ in 0..aid.element_index {
-                                base = IRExpression::function_call("cdr", vec![base])
+                                base = IRExpression::named_function_call("cdr", vec![base])
                             }
-                            arguments_to_let.push(IRExpression::function_call(
+                            arguments_to_let.push(IRExpression::named_function_call(
                                 "",
                                 vec![
                                     IRExpression::String(aid.name.clone()),
-                                    IRExpression::function_call("car", vec![base]),
+                                    IRExpression::named_function_call("car", vec![base]),
                                 ],
                             ))
                         }
                         SingleVariableDeclaration::ArrayRest(rest) => {
                             let mut base = transform_expr(rest.array);
                             for _ in 0..rest.elements_before_rest {
-                                base = IRExpression::function_call("cdr", vec![base]);
+                                base = IRExpression::named_function_call("cdr", vec![base]);
                             }
-                            arguments_to_let.push(IRExpression::function_call(
+                            arguments_to_let.push(IRExpression::named_function_call(
                                 "",
                                 vec![IRExpression::String(rest.name.clone()), base],
                             ))
@@ -230,10 +231,10 @@ where
 
                 arguments.push((
                     IfStatementCondition::Else,
-                    IRExpression::function_call(
+                    IRExpression::named_function_call(
                         "letrec",
                         vec![
-                            IRExpression::function_call("", arguments_to_let),
+                            IRExpression::named_function_call("", arguments_to_let),
                             component_iterator_to_expr(iter),
                         ],
                     ),
@@ -254,12 +255,12 @@ where
 
     for condition_branch in iter {
         if let IfStatementCondition::Condition(cond) = condition_branch.0 {
-            branches.push(IRExpression::function_call(
+            branches.push(IRExpression::named_function_call(
                 "",
                 vec![transform_expr(cond), condition_branch.1],
             ));
         } else {
-            branches.push(IRExpression::function_call(
+            branches.push(IRExpression::named_function_call(
                 "",
                 vec![IRExpression::String("else".to_string()), condition_branch.1],
             ));
@@ -267,7 +268,7 @@ where
         };
     }
 
-    IRExpression::function_call("cond", branches)
+    IRExpression::named_function_call("cond", branches)
 }
 
 fn scope_to_expression(s: &Scope) -> IRExpression {

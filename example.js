@@ -93,9 +93,22 @@ and_all_bools(cons(true, [true, true]));
 // Will print '(#t #t #f).
 map("=", [1, 2, 3], [1, 2, 4]);
 
-// array destructuring will replace code in callbacks too,
-// the `first` will be replaced by `(car a)`
 function returns_fn_that_will_add_b_to_first_element_of_a(a) {
   const [first] = a;
-  return (b) => first + b;
+  return [
+    (b) => first + b,
+    (c) => {
+      if (c > 9) {
+        return 5;
+      }
+      return 10;
+    },
+  ];
 }
+
+function arith(a) {
+  return (b) => (c) => b(a, c);
+}
+
+// You can call curried functions.
+arith(1)("*")(2);
