@@ -288,6 +288,10 @@ pub fn transform(semantic: Semantic<'_>) -> Statements {
                 match stmt {
                     Statement::Declaration(decl) => match decl {
                         Declaration::FunctionDeclaration(fndecl) => {
+                            // Ignore functions without bodies (declare function's)
+                            if fndecl.body.is_none() {
+                                continue;
+                            }
                             stmts.push(IRStatement::Function(FunctionStatement {
                                 name: fndecl.id.as_ref().unwrap().name.to_string(),
                                 parameters: transform_formal_params(&fndecl.params),
