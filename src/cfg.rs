@@ -133,26 +133,11 @@ fn cfg_component_from_stmt<'a, 'b>(
         Statement::BlockStatement(block) => Ok(ControlFlowComponent::new_scope(
             make_scope_from_stmts(&block.body, block.span)?,
         )),
-        Statement::BreakStatement(_) => todo!(),
-        Statement::ContinueStatement(_) => todo!(),
-        Statement::DebuggerStatement(_) => todo!(),
-        Statement::DoWhileStatement(_) => todo!(),
-        Statement::EmptyStatement(_) => todo!(),
-        Statement::ExpressionStatement(_) => todo!(),
-        Statement::ForInStatement(_) => todo!(),
-        Statement::ForOfStatement(_) => todo!(),
-        Statement::ForStatement(_) => todo!(),
         Statement::IfStatement(if_stmt) => Ok(ControlFlowComponent::new_if_stmt(
             &if_stmt.test,
             cfg_component_from_stmt(&if_stmt.consequent)?,
         )),
-        Statement::LabeledStatement(_) => todo!(),
-        Statement::SwitchStatement(_) => todo!(),
-        Statement::ThrowStatement(_) => todo!(),
-        Statement::TryStatement(_) => todo!(),
-        Statement::WhileStatement(_) => todo!(),
-        Statement::WithStatement(_) => todo!(),
-        Statement::ModuleDeclaration(_) => todo!(),
+        
         Statement::Declaration(declaration) => match declaration {
             Declaration::VariableDeclaration(variable_declarations) => {
                 let mut variables = vec![];
@@ -227,6 +212,22 @@ fn cfg_component_from_stmt<'a, 'b>(
             Declaration::TSModuleDeclaration(_) => todo!(),
             Declaration::TSImportEqualsDeclaration(_) => todo!(),
         },
+        Statement::BreakStatement(_) => todo!(),
+        Statement::ContinueStatement(_) => todo!(),
+        Statement::DebuggerStatement(_) => todo!(),
+        Statement::DoWhileStatement(_) => todo!(),
+        Statement::EmptyStatement(_) => todo!(),
+        Statement::ExpressionStatement(_) => todo!(),
+        Statement::ForInStatement(_) => todo!(),
+        Statement::ForOfStatement(_) => todo!(),
+        Statement::ForStatement(_) => todo!(),
+        Statement::LabeledStatement(_) => todo!(),
+        Statement::SwitchStatement(_) => todo!(),
+        Statement::ThrowStatement(_) => todo!(),
+        Statement::TryStatement(_) => todo!(),
+        Statement::WhileStatement(_) => todo!(),
+        Statement::WithStatement(_) => todo!(),
+        Statement::ModuleDeclaration(_) => todo!(),
     }
 }
 
