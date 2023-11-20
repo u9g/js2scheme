@@ -137,67 +137,68 @@ fn cfg_component_from_stmt<'a, 'b>(
             &if_stmt.test,
             cfg_component_from_stmt(&if_stmt.consequent)?,
         )),
-        
+
         Statement::Declaration(declaration) => match declaration {
             Declaration::VariableDeclaration(variable_declarations) => {
                 let mut variables = vec![];
                 for vdecl in &variable_declarations.declarations {
-                    if let Some(array) = &vdecl.init {
-                        match &vdecl.id.kind {
-                            BindingPatternKind::BindingIdentifier(variable_name) => {
-                                variables.push(SingleVariableDeclaration::Primitive(
-                                    PrimitiveDeclaration {
-                                        name: variable_name.name.to_string(),
-                                        value: array,
-                                    },
-                                ));
-                            }
-                            BindingPatternKind::ObjectPattern(_) => todo!(),
-                            BindingPatternKind::ArrayPattern(array_pattern) => {
-                                array_pattern
-                                    .elements
-                                    .iter()
-                                    .enumerate()
-                                    .filter_map(|x| x.1.as_ref().map(|v| (x.0, v)))
-                                    .for_each(|(element_index, name)| {
-                                        variables.push(SingleVariableDeclaration::ArrayIndex(
-                                            ArrayIndexedDeclaration {
-                                                name: match &name.kind {
-                                                    BindingPatternKind::BindingIdentifier(id) => {
-                                                        id.name.to_string()
-                                                    }
-                                                    _ => unimplemented!(),
-                                                },
-                                                element_index,
-                                                array,
-                                            },
-                                        ))
-                                    });
-                                if let Some(rest) = &array_pattern.rest {
-                                    let name = match &rest.argument.kind {
-                                        BindingPatternKind::BindingIdentifier(name) => {
-                                            name.name.to_string()
-                                        }
-                                        _ => unimplemented!(),
-                                    };
-                                    let elements_before_rest =
-                                        array_pattern.elements.iter().count();
-                                    variables.push(SingleVariableDeclaration::ArrayRest(
-                                        RestDeclaration {
-                                            name,
-                                            elements_before_rest,
-                                            array,
-                                        },
-                                    ))
-                                }
-                            }
-                            BindingPatternKind::AssignmentPattern(_) => todo!(),
-                        }
-                    } else {
+                    let Some(array) = &vdecl.init else {
                         return Err(ControlFlowGraphError::VariableWithoutValue(
                             "".to_string(),
                             vdecl.span,
                         ));
+                    };
+
+                    match &vdecl.id.kind {
+                        BindingPatternKind::BindingIdentifier(variable_name) => {
+                            variables.push(SingleVariableDeclaration::Primitive(
+                                PrimitiveDeclaration {
+                                    name: variable_name.name.to_string(),
+                                    value: array,
+                                },
+                            ));
+                        }
+                        BindingPatternKind::ArrayPattern(array_pattern) => {
+                            variables.extend(
+                                    array_pattern
+                                        .elements
+                                        .iter()
+                                        .enumerate()
+                                        .filter_map(|x| x.1.as_ref().map(|v| (x.0, v)))
+                                        .map(|(element_index, name)| {
+                                            let BindingPatternKind::BindingIdentifier(id) =
+                                                &name.kind else {
+                                                    panic!("doesn't support naming variables more than one destructure deep.")
+                                                };
+
+                                            SingleVariableDeclaration::ArrayIndex(
+                                                ArrayIndexedDeclaration {
+                                                    name: id.name.to_string(),
+                                                    element_index,
+                                                    array,
+                                                },
+                                            )
+                                        }),
+                                );
+
+                            if let Some(rest) = &array_pattern.rest {
+                                let BindingPatternKind::BindingIdentifier(id) = &rest.argument.kind
+                                else {
+                                    panic!("doesn't support naming variables more than one destructure deep.")
+                                };
+
+                                let elements_before_rest = array_pattern.elements.iter().count();
+                                variables.push(SingleVariableDeclaration::ArrayRest(
+                                    RestDeclaration {
+                                        name: id.name.to_string(),
+                                        elements_before_rest,
+                                        array,
+                                    },
+                                ))
+                            }
+                        }
+                        BindingPatternKind::ObjectPattern(_) => todo!(),
+                        BindingPatternKind::AssignmentPattern(_) => todo!(),
                     }
                 }
                 Ok(ControlFlowComponent::VariableDeclaration(
